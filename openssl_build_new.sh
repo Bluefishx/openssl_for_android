@@ -31,7 +31,7 @@ ANDROID_NDK_VERSION=$4
 ANDROID_NDK_PATH=${WORK_PATH}/android-ndk-${ANDROID_NDK_VERSION}
 OPENSSL_PATH=${WORK_PATH}/openssl-${OPENSSL_VERSION}
 OUTPUT_PATH=${WORK_PATH}/openssl_${OPENSSL_VERSION}_${ANDROID_TARGET_ABI}
-OPENSSL_OPTIONS="no-apps no-asm no-docs no-engine no-gost no-legacy no-shared no-ssl no-tests no-zlib"
+OPENSSL_OPTIONS="no-apps no-asm no-docs no-engine no-gost no-legacy no-tests no-zlib"
 
 if [ "$(uname -s)" == "Darwin" ]; then
     echo "Build on macOS..."
@@ -53,15 +53,15 @@ function build(){
     export CPPFLAGS="-DANDROID -fPIC -Os"
 
     if   [ "${ANDROID_TARGET_ABI}" == "armeabi-v7a" ]; then
-        ./Configure android-arm     -D__ANDROID_API__=${ANDROID_TARGET_API} -static ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}
+        ./Configure android-arm     -D__ANDROID_API__=${ANDROID_TARGET_API} -shared ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}
     elif [ "${ANDROID_TARGET_ABI}" == "arm64-v8a"   ]; then
-        ./Configure android-arm64   -D__ANDROID_API__=${ANDROID_TARGET_API} -static ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}
+        ./Configure android-arm64   -D__ANDROID_API__=${ANDROID_TARGET_API} -shared ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}
     elif [ "${ANDROID_TARGET_ABI}" == "x86"         ]; then
-        ./Configure android-x86     -D__ANDROID_API__=${ANDROID_TARGET_API} -static ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}
+        ./Configure android-x86     -D__ANDROID_API__=${ANDROID_TARGET_API} -shared ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}
     elif [ "${ANDROID_TARGET_ABI}" == "x86_64"      ]; then
-        ./Configure android-x86_64  -D__ANDROID_API__=${ANDROID_TARGET_API} -static ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}
+        ./Configure android-x86_64  -D__ANDROID_API__=${ANDROID_TARGET_API} -shared ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}
     elif [ "${ANDROID_TARGET_ABI}" == "riscv64"     ]; then
-        ./Configure android-riscv64 -D__ANDROID_API__=${ANDROID_TARGET_API} -static ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}
+        ./Configure android-riscv64 -D__ANDROID_API__=${ANDROID_TARGET_API} -shared ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}
     else
         echo "Unsupported target ABI: ${ANDROID_TARGET_ABI}"
         exit 1
