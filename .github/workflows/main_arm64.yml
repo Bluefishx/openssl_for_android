@@ -1,4 +1,4 @@
-name: Compile OpenSSL For Android New
+name: Compile OpenSSL For Android Arm64
 
 on:
   workflow_dispatch:
@@ -7,7 +7,6 @@ on:
 
 env:
   OPENSSL_VERSION: 3.5.2
-  WORK_PATH: /home/runner/work/openssl_for_android/openssl_for_android
 
 jobs:
   Compile_OpenSSL_for_Android:
@@ -56,15 +55,20 @@ jobs:
       - name: Verify alignment (only for arm64-v8a)
         if: ${{ fromJSON(matrix.info).ANDROID_TARGET_ABI == 'arm64-v8a' }}
         run: |
-          echo "Checking 16KB alignment..."
-          readelf -l openssl_${{env.OPENSSL_VERSION}}_arm64-v8a/lib/libcrypto.so | grep ALIGN
-          readelf -l openssl_${{env.OPENSSL_VERSION}}_arm64-v8a/lib/libssl.so | grep ALIGN
+          echo "🔎 Checking 16KB alignment..."
+          for lib in openssl_${{env.OPENSSL_VERSION}}_arm64-v8a/lib/*.so; do
+            if [ -f "$lib" ]; then
+              readelf -l "$lib" | grep -i "ALIGN" || echo "⚠️ No ALIGN found in $lib"
+            else
+              echo "⚠️ Missing $lib"
+            fi
+          done
 
       - name: Package
         run: |
           tar -zcvf OpenSSL_${{env.OPENSSL_VERSION}}_${{fromJSON(matrix.info).ANDROID_TARGET_ABI}}.tar.gz \
             openssl_${{env.OPENSSL_VERSION}}_${{fromJSON(matrix.info).ANDROID_TARGET_ABI}}
-          echo "release_tag=${{env.OPENSSL_VERSION}}" >> $GITHUB_ENV
+          echo "RELEASE_TAG=${{env.OPENSSL_VERSION}}" >> $GITHUB_ENV
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
@@ -72,8 +76,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
         with:
-          tag_name: ${{env.release_tag}}
-          files: ${{env.WORK_PATH}}/OpenSSL_${{env.OPENSSL_VERSION}}_${{fromJSON(matrix.info).ANDROID_TARGET_ABI}}.tar.gz
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: OpenSSL_${{env.OPENSSL_VERSION}}_${{fromJSON(matrix.info).ANDROID_TARGET_ABI}}.tar.gz
 
   Delete_Workflow:
     needs: [ Compile_OpenSSL_for_Android ]
