@@ -1,10 +1,7 @@
 #!/bin/bash -e
 
 ################################################################################
-#   Copyright 2025-2025 FixBuild
-#   Licensed under the Apache License, Version 2.0
-################################################################################
-#   Build OpenSSL for Android (armeabi, mips, mips64, arm64-v8a)
+#   Build OpenSSL for Android armeabi-v7a, arm64-v8a, x86, x86_64, riscv64
 #   Supports Linux and macOS
 ################################################################################
 
@@ -17,7 +14,24 @@ ANDROID_NDK_VERSION=$4
 ANDROID_NDK_PATH=${WORK_PATH}/android-ndk-${ANDROID_NDK_VERSION}
 OPENSSL_PATH=${WORK_PATH}/openssl-${OPENSSL_VERSION}
 OUTPUT_PATH=${WORK_PATH}/openssl_${OPENSSL_VERSION}_${ANDROID_TARGET_ABI}
-OPENSSL_OPTIONS="no-apps no-asm no-docs no-engine no-gost no-legacy no-shared no-ssl no-tests no-zlib"
+OPENSSL_OPTIONS="no-apps no-asm no-docs no-engine no-gost no-legacy no-tests no-zlib"
+
+# Input validation
+if [ -z "$ANDROID_TARGET_API" ] || [ -z "$ANDROID_TARGET_ABI" ] || [ -z "$OPENSSL_VERSION" ] || [ -z "$ANDROID_NDK_VERSION" ]; then
+    echo "Error: Missing required parameters."
+    echo "Usage: $0 <ANDROID_TARGET_API> <ANDROID_TARGET_ABI> <OPENSSL_VERSION> <ANDROID_NDK_VERSION>"
+    exit 1
+fi
+
+# Check NDK and OpenSSL paths
+if [ ! -d "${ANDROID_NDK_PATH}" ]; then
+    echo "Error: Android NDK not found at ${ANDROID_NDK_PATH}"
+    exit 1
+fi
+if [ ! -d "${OPENSSL_PATH}" ]; then
+    echo "Error: OpenSSL source not found at ${OPENSSL_PATH}"
+    exit 1
+fi
 
 # Platform detection
 if [ "$(uname -s)" == "Darwin" ]; then
@@ -27,6 +41,9 @@ if [ "$(uname -s)" == "Darwin" ]; then
 else
     echo "Build on Linux..."
     PLATFORM="linux"
+    if ! command -v nproc >/dev/null 2>&1; then
+        nproc() { echo 4; } # Fallback to 4 cores
+    fi
 fi
 
 function build() {
@@ -37,37 +54,63 @@ function build() {
     export PATH=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/${PLATFORM}-x86_64/bin:$PATH
     export CXXFLAGS="-fPIC -Os"
     export CPPFLAGS="-DANDROID -fPIC -Os"
-    # 🔑 Ensure 16KB alignment for Android 15+
-    export LDFLAGS="-Wl,-z,max-page-size=16384"
 
-    if [ "${ANDROID_TARGET_ABI}" == "armeabi" ]; then
-        export PATH=${ANDROID_NDK_ROOT}/toolchains/arm-linux-androideabi-4.9/prebuilt/${PLATFORM}-x86_64/bin:$PATH
-        ./Configure android-arm -D__ANDROID_API__=${ANDROID_TARGET_API} -static ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}
-
-    elif [ "${ANDROID_TARGET_ABI}" == "mips" ]; then
-        export PATH=${ANDROID_NDK_ROOT}/toolchains/mipsel-linux-android-4.9/prebuilt/${PLATFORM}-x86_64/bin:$PATH
-        ./Configure android-mips -D__ANDROID_API__=${ANDROID_TARGET_API} -static ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}
-
-    elif [ "${ANDROID_TARGET_ABI}" == "mips64" ]; then
-        export PATH=${ANDROID_NDK_ROOT}/toolchains/mips64el-linux-android-4.9/prebuilt/${PLATFORM}-x86_64/bin:$PATH
-        ./Configure android-mips64 -D__ANDROID_API__=${ANDROID_TARGET_API} -static ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}
-
-    elif [ "${ANDROID_TARGET_ABI}" == "arm64-v8a" ]; then
-        ./Configure android-arm64 -D__ANDROID_API__=${ANDROID_TARGET_API} -shared ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}
-
+    # 🔑 Apply 16KB alignment ONLY for arm64-v8a
+    if [ "${ANDROID_TARGET_ABI}" == "arm64-v8a" ]; then
+        export LDFLAGS="-Wl,-z,max-page-size=16384"
+        echo "Applying 16KB alignment flags for arm64-v8a..."
     else
-        echo "Unsupported target ABI: ${ANDROID_TARGET_ABI}"
+        unset LDFLAGS
+    fi
+
+    # Clean previous build
+    make clean || true
+
+    case "${ANDROID_TARGET_ABI}" in
+        armeabi-v7a)
+            TARGET="android-arm"
+            ;;
+        arm64-v8a)
+            TARGET="android-arm64"
+            ;;
+        x86)
+            TARGET="android-x86"
+            ;;
+        x86_64)
+            TARGET="android-x86_64"
+            ;;
+        riscv64)
+            TARGET="android-riscv64"
+            ;;
+        *)
+            echo "Unsupported target ABI: ${ANDROID_TARGET_ABI}"
+            exit 1
+            ;;
+    esac
+
+    echo "Configuring OpenSSL for ${ANDROID_TARGET_ABI}..."
+    if ! ./Configure ${TARGET} -D__ANDROID_API__=${ANDROID_TARGET_API} -shared \
+        ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}; then
+        echo "Error: OpenSSL configuration failed for ${ANDROID_TARGET_ABI}"
         exit 1
     fi
 
-    make clean || true
-    make -j$(nproc)
-    make install_sw
+    echo "Building OpenSSL for ${ANDROID_TARGET_ABI}..."
+    if ! make -j$(nproc); then
+        echo "Error: OpenSSL build failed for ${ANDROID_TARGET_ABI}"
+        exit 1
+    fi
+    if ! make install_sw; then
+        echo "Error: OpenSSL installation failed for ${ANDROID_TARGET_ABI}"
+        exit 1
+    fi
 
-    echo "✅ Build completed! Check output libraries in ${OUTPUT_PATH}/lib"
-    echo "   Verify 16KB alignment with:"
-    echo "   readelf -l ${OUTPUT_PATH}/lib/libcrypto.so | grep ALIGN"
-    echo "   readelf -l ${OUTPUT_PATH}/lib/libssl.so | grep ALIGN"
+    echo "✅ Build completed for ${ANDROID_TARGET_ABI}! Output in ${OUTPUT_PATH}/lib"
+    if [ "${ANDROID_TARGET_ABI}" == "arm64-v8a" ]; then
+        echo "   Verify 16KB alignment with:"
+        echo "   readelf -l ${OUTPUT_PATH}/lib/libcrypto.so | grep ALIGN"
+        echo "   readelf -l ${OUTPUT_PATH}/lib/libssl.so | grep ALIGN"
+    fi
 }
 
 function clean() {
