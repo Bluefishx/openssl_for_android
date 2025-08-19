@@ -48,7 +48,7 @@ jobs:
       - name: Compile
         run: |
           # 🔑 LDFLAGS applied in script for 16KB alignment
-          bash ./openssl_build_new.sh \
+          bash ./build_arm.sh \
             ${{fromJSON(matrix.info).ANDROID_TARGET_API}} \
             ${{fromJSON(matrix.info).ANDROID_TARGET_ABI}} \
             ${{env.OPENSSL_VERSION}} \
