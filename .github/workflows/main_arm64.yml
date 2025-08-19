@@ -1,4 +1,4 @@
-name: Compile OpenSSL For Android New
+name: Compile OpenSSL For Android (arm64-v8a)
 
 on:
   workflow_dispatch:
@@ -10,20 +10,9 @@ env:
   WORK_PATH: /home/runner/work/openssl_for_android/openssl_for_android
 
 jobs:
-  Compile_OpenSSL_for_Android:
-    name: Compile OpenSSL
+  Compile_OpenSSL_arm64:
     runs-on: ubuntu-latest
 
-    strategy:
-      fail-fast: false
-      matrix:
-        info:
-          - '{ "ANDROID_TARGET_ABI": "armeabi-v7a", "ANDROID_TARGET_API": "21",  "ANDROID_NDK": "r28b"}'
-          - '{ "ANDROID_TARGET_ABI": "arm64-v8a",   "ANDROID_TARGET_API": "21",  "ANDROID_NDK": "r28b"}'
-          - '{ "ANDROID_TARGET_ABI": "riscv64",     "ANDROID_TARGET_API": "35",  "ANDROID_NDK": "r28b"}'
-          - '{ "ANDROID_TARGET_ABI": "x86",         "ANDROID_TARGET_API": "21",  "ANDROID_NDK": "r28b"}'
-          - '{ "ANDROID_TARGET_ABI": "x86_64",      "ANDROID_TARGET_API": "21",  "ANDROID_NDK": "r28b"}'
-    
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,53 +22,36 @@ jobs:
           sudo apt -yqq update
           sudo apt install -yqq aria2
 
-      - name: Download Android NDK
-        id: download_ndk
+      - name: Download Android NDK r28b
         run: |
-          aria2c -o android-ndk-${{fromJSON(matrix.info).ANDROID_NDK}}.zip https://dl.google.com/android/repository/android-ndk-${{fromJSON(matrix.info).ANDROID_NDK}}-linux.zip
-          unzip android-ndk-${{fromJSON(matrix.info).ANDROID_NDK}}.zip
+          aria2c -o android-ndk-r28b.zip https://dl.google.com/android/repository/android-ndk-r28b-linux.zip
+          unzip android-ndk-r28b.zip
 
       - name: Download OpenSSL
-        id: download_openssl
         run: |
           aria2c -o openssl-${{env.OPENSSL_VERSION}}.tar.gz https://github.com/openssl/openssl/releases/download/openssl-${{env.OPENSSL_VERSION}}/openssl-${{env.OPENSSL_VERSION}}.tar.gz
           tar -zxvf openssl-${{env.OPENSSL_VERSION}}.tar.gz
 
-      - name: Compile
+      - name: Compile (arm64-v8a with 16KB alignment)
         run: |
-          # 🔑 LDFLAGS applied in script for 16KB alignment
-          bash ./build_arm.sh \
-            ${{fromJSON(matrix.info).ANDROID_TARGET_API}} \
-            ${{fromJSON(matrix.info).ANDROID_TARGET_ABI}} \
-            ${{env.OPENSSL_VERSION}} \
-            ${{fromJSON(matrix.info).ANDROID_NDK}}
+          bash ./openssl_build_new.sh 21 arm64-v8a ${{env.OPENSSL_VERSION}} r28b
 
-      - name: Verify 16KB alignment
+      - name: Verify alignment
         run: |
           echo "Checking alignment for libcrypto.so and libssl.so..."
-          readelf -l openssl_${{env.OPENSSL_VERSION}}_${{fromJSON(matrix.info).ANDROID_TARGET_ABI}}/lib/libcrypto.so | grep ALIGN
-          readelf -l openssl_${{env.OPENSSL_VERSION}}_${{fromJSON(matrix.info).ANDROID_TARGET_ABI}}/lib/libssl.so | grep ALIGN
+          readelf -l openssl_${{env.OPENSSL_VERSION}}_arm64-v8a/lib/libcrypto.so | grep ALIGN
+          readelf -l openssl_${{env.OPENSSL_VERSION}}_arm64-v8a/lib/libssl.so | grep ALIGN
 
-      - name: Generate release package
+      - name: Package
         run: |
-          tar -zcvf OpenSSL_${{env.OPENSSL_VERSION}}_${{fromJSON(matrix.info).ANDROID_TARGET_ABI}}.tar.gz openssl_${{env.OPENSSL_VERSION}}_${{fromJSON(matrix.info).ANDROID_TARGET_ABI}}
+          tar -zcvf OpenSSL_${{env.OPENSSL_VERSION}}_arm64-v8a.tar.gz openssl_${{env.OPENSSL_VERSION}}_arm64-v8a
           echo "release_tag=${{env.OPENSSL_VERSION}}" >> $GITHUB_ENV
 
-      - name: Upload firmware to release
+      - name: Upload to Release
         uses: softprops/action-gh-release@v1
         if: github.ref == 'refs/heads/master'
         env:
           GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
         with:
           tag_name: ${{env.release_tag}}
-          files: ${{env.WORK_PATH}}/OpenSSL_${{env.OPENSSL_VERSION}}_${{fromJSON(matrix.info).ANDROID_TARGET_ABI}}.tar.gz
-
-  Delete_Workflow:
-    needs: [ Compile_OpenSSL_for_Android ]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Delete workflow runs
-        uses: Mattraks/delete-workflow-runs@main
-        with:
-          retain_days: 0
-          keep_minimum_runs: 8
+          files: ${{env.WORK_PATH}}/OpenSSL_${{env.OPENSSL_VERSION}}_arm64-v8a.tar.gz
