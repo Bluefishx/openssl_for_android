@@ -1,7 +1,7 @@
 #!/bin/bash -e
 
 ################################################################################
-#   Build OpenSSL for Android armeabi-v7a, arm64-v8a, x86, x86_64, riscv64
+#   Build OpenSSL for Android: armeabi-v7a, arm64-v8a, x86, x86_64
 #   Supports Linux and macOS
 ################################################################################
 
@@ -47,11 +47,11 @@ else
 fi
 
 function build() {
-    mkdir -p ${OUTPUT_PATH}
-    cd ${OPENSSL_PATH}
+    mkdir -p "${OUTPUT_PATH}"
+    cd "${OPENSSL_PATH}"
 
-    export ANDROID_NDK_ROOT=${ANDROID_NDK_PATH}
-    export PATH=${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/${PLATFORM}-x86_64/bin:$PATH
+    export ANDROID_NDK_ROOT="${ANDROID_NDK_PATH}"
+    export PATH="${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/${PLATFORM}-x86_64/bin:$PATH"
     export CXXFLAGS="-fPIC -Os"
     export CPPFLAGS="-DANDROID -fPIC -Os"
 
@@ -66,6 +66,7 @@ function build() {
     # Clean previous build
     make clean || true
 
+    # ABI → Configure target mapping
     case "${ANDROID_TARGET_ABI}" in
         armeabi-v7a)
             TARGET="android-arm"
@@ -79,49 +80,55 @@ function build() {
         x86_64)
             TARGET="android-x86_64"
             ;;
-        riscv64)
-            TARGET="android-riscv64"
-            ;;
         *)
-            echo "Unsupported target ABI: ${ANDROID_TARGET_ABI}"
+            echo "❌ Unsupported target ABI: ${ANDROID_TARGET_ABI}"
             exit 1
             ;;
     esac
 
-    echo "Configuring OpenSSL for ${ANDROID_TARGET_ABI}..."
-    if ! ./Configure ${TARGET} -D__ANDROID_API__=${ANDROID_TARGET_API} -shared \
-        ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}; then
-        echo "Error: OpenSSL configuration failed for ${ANDROID_TARGET_ABI}"
+    echo "⚙️ Configuring OpenSSL for ${ANDROID_TARGET_ABI}..."
+    if ! ./Configure "${TARGET}" -D__ANDROID_API__="${ANDROID_TARGET_API}" -shared \
+        ${OPENSSL_OPTIONS} --prefix="${OUTPUT_PATH}" \
+        ${LDFLAGS:+LDFLAGS="$LDFLAGS"}; then
+        echo "❌ OpenSSL configuration failed for ${ANDROID_TARGET_ABI}"
         exit 1
     fi
 
-    echo "Building OpenSSL for ${ANDROID_TARGET_ABI}..."
-    if ! make -j$(nproc); then
-        echo "Error: OpenSSL build failed for ${ANDROID_TARGET_ABI}"
+    echo "🔨 Building OpenSSL for ${ANDROID_TARGET_ABI}..."
+    if ! make -j"$(nproc)"; then
+        echo "❌ OpenSSL build failed for ${ANDROID_TARGET_ABI}"
         exit 1
     fi
     if ! make install_sw; then
-        echo "Error: OpenSSL installation failed for ${ANDROID_TARGET_ABI}"
+        echo "❌ OpenSSL installation failed for ${ANDROID_TARGET_ABI}"
         exit 1
     fi
 
     echo "✅ Build completed for ${ANDROID_TARGET_ABI}! Output in ${OUTPUT_PATH}/lib"
+
+    # Alignment verification for arm64-v8a
     if [ "${ANDROID_TARGET_ABI}" == "arm64-v8a" ]; then
-        echo "   Verify 16KB alignment with:"
-        echo "   readelf -l ${OUTPUT_PATH}/lib/libcrypto.so | grep ALIGN"
-        echo "   readelf -l ${OUTPUT_PATH}/lib/libssl.so | grep ALIGN"
+        echo "🔎 Verifying 16KB alignment..."
+        for so in "${OUTPUT_PATH}"/lib/*.so; do
+            if readelf -l "$so" | awk '/LOAD/{print $0}' | grep -q '0x4000'; then
+                echo "✅ $so aligned to 16KB"
+            else
+                echo "❌ $so alignment NOT 16KB"
+                exit 1
+            fi
+        done
     fi
 }
 
 function clean() {
-    if [ -d ${OUTPUT_PATH} ]; then
-        rm -rf ${OUTPUT_PATH}/bin
-        rm -rf ${OUTPUT_PATH}/share
-        rm -rf ${OUTPUT_PATH}/ssl
-        rm -rf ${OUTPUT_PATH}/lib/cmake
-        rm -rf ${OUTPUT_PATH}/lib/engines-3
-        rm -rf ${OUTPUT_PATH}/lib/ossl-modules
-        rm -rf ${OUTPUT_PATH}/lib/pkgconfig
+    if [ -d "${OUTPUT_PATH}" ]; then
+        rm -rf "${OUTPUT_PATH}/bin"
+        rm -rf "${OUTPUT_PATH}/share"
+        rm -rf "${OUTPUT_PATH}/ssl"
+        rm -rf "${OUTPUT_PATH}/lib/cmake"
+        rm -rf "${OUTPUT_PATH}/lib/engines-3"
+        rm -rf "${OUTPUT_PATH}/lib/ossl-modules"
+        rm -rf "${OUTPUT_PATH}/lib/pkgconfig"
     fi
 }
 
