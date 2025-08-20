@@ -1,4 +1,4 @@
-name: Compile OpenSSL For Android Arm64
+name: Compile OpenSSL For Android
 
 on:
   workflow_dispatch:
@@ -17,32 +17,31 @@ jobs:
       fail-fast: false
       matrix:
         info:
-          - '{ "ANDROID_TARGET_ABI": "armeabi-v7a", "ANDROID_TARGET_API": "21",  "ANDROID_NDK": "r28b"}'
-          - '{ "ANDROID_TARGET_ABI": "arm64-v8a",   "ANDROID_TARGET_API": "21",  "ANDROID_NDK": "r28b"}'
-          - '{ "ANDROID_TARGET_ABI": "riscv64",     "ANDROID_TARGET_API": "35",  "ANDROID_NDK": "r28b"}'
-          - '{ "ANDROID_TARGET_ABI": "x86",         "ANDROID_TARGET_API": "21",  "ANDROID_NDK": "r28b"}'
-          - '{ "ANDROID_TARGET_ABI": "x86_64",      "ANDROID_TARGET_API": "21",  "ANDROID_NDK": "r28b"}'
+          - '{ "ANDROID_TARGET_ABI": "armeabi-v7a", "ANDROID_TARGET_API": "21", "ANDROID_NDK": "r28b"}'
+          - '{ "ANDROID_TARGET_ABI": "arm64-v8a",  "ANDROID_TARGET_API": "21", "ANDROID_NDK": "r28b"}'
+          - '{ "ANDROID_TARGET_ABI": "x86",        "ANDROID_TARGET_API": "21", "ANDROID_NDK": "r28b"}'
+          - '{ "ANDROID_TARGET_ABI": "x86_64",     "ANDROID_TARGET_API": "21", "ANDROID_NDK": "r28b"}'
     
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Aria2
+      - name: Install Dependencies
         run: |
           sudo apt -yqq update
-          sudo apt install -yqq aria2
+          sudo apt install -yqq aria2 unzip build-essential
 
       - name: Download Android NDK
         run: |
           aria2c -o android-ndk-${{fromJSON(matrix.info).ANDROID_NDK}}.zip \
             https://dl.google.com/android/repository/android-ndk-${{fromJSON(matrix.info).ANDROID_NDK}}-linux.zip
-          unzip android-ndk-${{fromJSON(matrix.info).ANDROID_NDK}}.zip
+          unzip -q android-ndk-${{fromJSON(matrix.info).ANDROID_NDK}}.zip
 
       - name: Download OpenSSL
         run: |
           aria2c -o openssl-${{env.OPENSSL_VERSION}}.tar.gz \
             https://github.com/openssl/openssl/releases/download/openssl-${{env.OPENSSL_VERSION}}/openssl-${{env.OPENSSL_VERSION}}.tar.gz
-          tar -zxvf openssl-${{env.OPENSSL_VERSION}}.tar.gz
+          tar -zxf openssl-${{env.OPENSSL_VERSION}}.tar.gz
 
       - name: Compile with script
         run: |
@@ -58,7 +57,7 @@ jobs:
           echo "🔎 Checking 16KB alignment..."
           for lib in openssl_${{env.OPENSSL_VERSION}}_arm64-v8a/lib/*.so; do
             if [ -f "$lib" ]; then
-              readelf -l "$lib" | grep -i "ALIGN" || echo "⚠️ No ALIGN found in $lib"
+              readelf -l "$lib" | awk '/LOAD/{print $0}'
             else
               echo "⚠️ Missing $lib"
             fi
@@ -66,7 +65,7 @@ jobs:
 
       - name: Package
         run: |
-          tar -zcvf OpenSSL_${{env.OPENSSL_VERSION}}_${{fromJSON(matrix.info).ANDROID_TARGET_ABI}}.tar.gz \
+          tar -zcf OpenSSL_${{env.OPENSSL_VERSION}}_${{fromJSON(matrix.info).ANDROID_TARGET_ABI}}.tar.gz \
             openssl_${{env.OPENSSL_VERSION}}_${{fromJSON(matrix.info).ANDROID_TARGET_ABI}}
           echo "RELEASE_TAG=${{env.OPENSSL_VERSION}}" >> $GITHUB_ENV
 
