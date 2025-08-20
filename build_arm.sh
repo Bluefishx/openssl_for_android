@@ -1,7 +1,7 @@
 #!/bin/bash -e
 
 ################################################################################
-#   Build OpenSSL for Android armeabi-v7a, arm64-v8a, x86, x86_64
+#   Build OpenSSL for Android: armeabi-v7a, arm64-v8a, x86, x86_64
 #   Supports Linux and macOS
 ################################################################################
 
@@ -55,15 +55,23 @@ function build() {
     export CXXFLAGS="-fPIC -Os"
     export CPPFLAGS="-DANDROID -fPIC -Os"
 
-    # Target selection + special flags for arm64-v8a
+    # 🔑 Apply 16KB alignment ONLY for arm64-v8a
+    if [ "${ANDROID_TARGET_ABI}" == "arm64-v8a" ]; then
+        export LDFLAGS="-Wl,-z,max-page-size=16384"
+        echo "Applying 16KB alignment flags for arm64-v8a..."
+    else
+        unset LDFLAGS
+    fi
+
+    # Clean previous build safely
+    [ -f Makefile ] && make clean || true
+
     case "${ANDROID_TARGET_ABI}" in
         armeabi-v7a)
             TARGET="android-arm"
             ;;
         arm64-v8a)
             TARGET="android-arm64"
-            echo "Applying 16KB alignment flags for arm64-v8a..."
-            export LDFLAGS="-Wl,-z,max-page-size=16384"
             ;;
         x86)
             TARGET="android-x86"
@@ -77,27 +85,26 @@ function build() {
             ;;
     esac
 
-    echo "Configuring OpenSSL for ${ANDROID_TARGET_ABI}..."
+    echo "⚙️ Configuring OpenSSL for ${ANDROID_TARGET_ABI}..."
     if ! ./Configure ${TARGET} -D__ANDROID_API__=${ANDROID_TARGET_API} -shared \
-        ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH} \
-        ${LDFLAGS:+LDFLAGS="$LDFLAGS"}; then
-        echo "Error: OpenSSL configuration failed for ${ANDROID_TARGET_ABI}"
+        ${OPENSSL_OPTIONS} --prefix=${OUTPUT_PATH}; then
+        echo "❌ OpenSSL configuration failed for ${ANDROID_TARGET_ABI}"
         exit 1
     fi
 
-    echo "Building OpenSSL for ${ANDROID_TARGET_ABI}..."
+    echo "🔨 Building OpenSSL for ${ANDROID_TARGET_ABI}..."
     if ! make -j"$(nproc)"; then
-        echo "Error: OpenSSL build failed for ${ANDROID_TARGET_ABI}"
+        echo "❌ OpenSSL build failed for ${ANDROID_TARGET_ABI}"
         exit 1
     fi
     if ! make install_sw; then
-        echo "Error: OpenSSL installation failed for ${ANDROID_TARGET_ABI}"
+        echo "❌ OpenSSL installation failed for ${ANDROID_TARGET_ABI}"
         exit 1
     fi
 
     echo "✅ Build completed for ${ANDROID_TARGET_ABI}! Output in ${OUTPUT_PATH}/lib"
 
-    # Alignment verification for arm64-v8a
+    # Verify alignment for arm64-v8a
     if [ "${ANDROID_TARGET_ABI}" == "arm64-v8a" ]; then
         echo "🔎 Verifying 16KB alignment..."
         for so in "${OUTPUT_PATH}"/lib/*.so; do
